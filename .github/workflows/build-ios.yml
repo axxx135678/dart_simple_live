@@ -1,0 +1,62 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: 1. 拉取最新代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 完整获取仓库历史和标签
+
+      - name: 2. 自动获取最新的 Release Tag
+        id: get_version
+        run: |
+          # 自动抓取原作者最新发布的标签名作为版本号
+          TAG=$(git describe --tags --abbrev=0)
+          echo "latest_tag=$TAG" >> $GITHUB_OUTPUT
+          echo "当前自动锁定的版本是: $TAG"
+
+      - name: 3. 切换到最新稳定版 Tag 代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.get_version.outputs.latest_tag }}
+          clean: false
+
+      - name: 4. 配置 Java 环境
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 5. 配置 Flutter 环境
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: 6. 安装项目依赖
+        run: |
+          cd simple_live_app
+          flutter pub get
+
+      - name: 7. 编译 iOS 手机端程序
+        run: |
+          cd simple_live_app
+          flutter build ios --release --no-codesign
+
+      - name: 8. 打包为 IPA 文件
+        run: |
+          cd simple_live_app/build/ios/iphoneos
+          mkdir Payload
+          mv Runner.app Payload/
+          zip -qr SimpleLive-Mobile.ipa Payload/
+
+      - name: 9. 上传 IPA 供下载
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimpleLive-iOS-Mobile-App
+          path: simple_live_app/build/ios/iphoneos/SimpleLive-Mobile.ipa
