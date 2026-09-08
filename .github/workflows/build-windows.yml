@@ -1,0 +1,52 @@
+name: Build Windows App
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: 1. 拉取完整仓库历史
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 2. 自动获取最新的 Release Tag
+        id: get_version
+        run: |
+          # 自动抓取原作者最新发布的标签名作为版本号
+          $tag = git describe --tags --abbrev=0
+          echo "latest_tag=$tag" >> $env:GITHUB_OUTPUT
+          echo "当前自动锁定的版本是: $tag"
+
+      - name: 3. 切换到最新稳定版 Tag 代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.get_version.outputs.latest_tag }}
+          clean: false
+
+      - name: 4. 配置 Flutter 环境
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: 5. 安装项目依赖
+        run: |
+          cd simple_live_app
+          flutter pub get
+
+      - name: 6. 编译 Windows Release 版本 (已内置忽略旧版 C++ 报错)
+        env:
+          # 强制让最新版微软编译器忽略 permission_handler 插件的语法警告
+          _CL_: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
+        run: |
+          cd simple_live_app
+          flutter build windows --release
+
+      - name: 7. 上传编译好的 Windows 程序文件夹
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimpleLive-Windows-App
+          path: simple_live_app/build/windows/x64/runner/Release/
